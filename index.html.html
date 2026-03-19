@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bestway FreightFlow</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #151820;
+    --surface2: #1c2030;
+    --border: #252a38;
+    --accent: #f5a623;
+    --blue: #3b82f6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --text: #e8ecf5;
+    --text2: #8892a4;
+    --text3: #525e74;
+    --font-display: 'Barlow Condensed', sans-serif;
+    --font-body: 'Barlow', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; overflow-x: hidden; }
+
+  /* ── NAV ── */
+  .nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px; position: sticky; top: 0; z-index: 100; }
+  .nav-logo { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: 0.5px; color: var(--text); }
+  .nav-logo span { color: var(--accent); }
+  .nav-tabs { display: flex; gap: 2px; background: var(--bg); border-radius: 8px; padding: 3px; }
+  .nav-tab { font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 6px 16px; border-radius: 6px; border: none; cursor: pointer; background: transparent; color: var(--text3); transition: all 0.2s; }
+  .nav-tab.active { background: var(--accent); color: #000; }
+  .nav-tab:hover:not(.active) { color: var(--text); background: var(--border); }
+  .nav-right { font-family: var(--font-mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 10px; }
+  .live-dot { display: inline-block; width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+  .live-dot.offline { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── VIEWS ── */
+  .view { display: none; animation: fadeIn 0.25s ease; }
+  .view.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ── CONFIG BANNER (shown until keys are set) ── */
+  .config-banner {
+    background: rgba(245,166,35,0.1);
+    border: 1px solid rgba(245,166,35,0.3);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: var(--accent);
+    line-height: 1.6;
+  }
+  .config-banner code {
+    background: rgba(0,0,0,0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* ── LOADING SPINNER ── */
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ══════════════════════════════════════
+     WAREHOUSE VIEW
+  ══════════════════════════════════════ */
+  .wh-wrap { max-width: 520px; margin: 0 auto; padding: 24px 16px 90px; }
+  .wh-title { font-family: var(--font-display); font-size: 32px; font-weight: 800; letter-spacing: 1px; line-height: 1; }
+  .wh-title span { color: var(--accent); }
+  .wh-sub { font-size: 13px; color: var(--text2); margin-top: 6px; margin-bottom: 24px; }
+  .cr-type-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+  .cr-type-btn { background: var(--surface); border: 2px solid var(--border); border-radius: 12px; padding: 16px 12px; cursor: pointer; transition: all 0.2s; text-align: left; }
+  .cr-type-btn.selected { border-color: var(--accent); background: rgba(245,166,35,0.08); }
+  .cr-type-badge { font-family: var(--font-mono); font-size: 10px; color: var(--accent); background: rgba(245,166,35,0.15); padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px; }
+  .cr-type-label { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--text); display: block; margin-bottom: 4px; }
+  .cr-type-desc { font-size: 11px; color: var(--text3); line-height: 1.4; }
+  .form-section { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; }
+  .form-section-title { font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .form-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .form-row:last-child { margin-bottom: 0; }
+  .form-group { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  label { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text3); }
+  input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--font-body); font-size: 15px; padding: 10px 12px; width: 100%; transition: border-color 0.2s; -webkit-appearance: none; appearance: none; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238892a4' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  textarea { resize: none; font-size: 14px; line-height: 1.5; }
+  .lines-header { display: grid; grid-template-columns: 28px 50px 80px 58px 50px 50px 28px; gap: 5px; padding: 0 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .lines-header span { font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); text-align: center; }
+  .line-row { display: grid; grid-template-columns: 28px 50px 80px 58px 50px 50px 28px; gap: 5px; margin-bottom: 4px; align-items: center; }
+  .line-num { font-family: var(--font-mono); font-size: 11px; color: var(--text3); text-align: center; }
+  .line-row input, .line-row select { font-size: 13px; padding: 7px 5px; text-align: center; }
+  .line-h-row { display: grid; grid-template-columns: 28px 58px 1fr 28px; gap: 5px; margin-bottom: 10px; align-items: center; }
+  .line-h-row input { font-size: 13px; padding: 6px 5px; text-align: center; }
+  .line-h-row .desc-input { font-size: 12px; padding: 6px 8px; text-align: left; }
+  .add-line-btn { width: 100%; border: 1px dashed var(--border); border-radius: 8px; background: transparent; color: var(--text3); font-size: 13px; font-weight: 600; padding: 8px; cursor: pointer; margin-top: 8px; transition: all 0.2s; }
+  .add-line-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .del-line-btn { background: transparent; border: none; color: var(--text3); font-size: 14px; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 5px; transition: all 0.2s; }
+  .del-line-btn:hover { background: rgba(239,68,68,0.15); color: var(--red); }
+  .toggle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .toggle-item { display: flex; align-items: center; justify-content: space-between; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .toggle-label { font-size: 12px; font-weight: 500; color: var(--text2); }
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 20px; cursor: pointer; transition: 0.2s; }
+  .toggle-slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: var(--text2); border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked + .toggle-slider { background: var(--accent); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(16px); background: #000; }
+  .condition-row { display: flex; gap: 8px; }
+  .condition-btn { flex: 1; padding: 10px; border-radius: 8px; border: 2px solid var(--border); background: var(--bg); font-family: var(--font-display); font-size: 16px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; transition: all 0.2s; color: var(--text3); }
+  .condition-btn.good.selected { border-color: var(--green); background: rgba(34,197,94,0.1); color: var(--green); }
+  .condition-btn.bad.selected { border-color: var(--red); background: rgba(239,68,68,0.1); color: var(--red); }
+  .submit-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 14px 16px; display: flex; gap: 10px; z-index: 50; }
+  .btn-primary { flex: 1; background: var(--accent); color: #000; border: none; border-radius: 10px; font-family: var(--font-display); font-size: 18px; font-weight: 800; letter-spacing: 1px; padding: 14px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-primary:hover:not(:disabled) { background: #f0b84a; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .btn-secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); border-radius: 10px; font-family: var(--font-display); font-size: 14px; font-weight: 700; padding: 14px 20px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; }
+  .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px); color: #000; font-family: var(--font-display); font-size: 16px; font-weight: 700; padding: 12px 24px; border-radius: 50px; opacity: 0; transition: all 0.3s; z-index: 200; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--green); }
+  .toast.error { background: var(--red); color: #fff; }
+
+  /* ══════════════════════════════════════
+     OFFICE / DASHBOARD VIEW
+  ══════════════════════════════════════ */
+  .dash-wrap { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .dash-top { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
+  .dash-title { font-family: var(--font-display); font-size: 36px; font-weight: 800; letter-spacing: 1px; line-height: 1; }
+  .dash-title span { color: var(--accent); }
+  .dash-date { font-family: var(--font-mono); font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; position: relative; overflow: hidden; }
+  .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+  .kpi-card.blue::before { background: var(--blue); }
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+  .kpi-val { font-family: var(--font-display); font-size: 44px; font-weight: 800; line-height: 1; color: var(--text); }
+  .kpi-sub { font-size: 12px; color: var(--text3); margin-top: 6px; }
+  .kpi-icon { position: absolute; top: 16px; right: 16px; font-size: 28px; opacity: 0.12; }
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+  .filter-bar input, .filter-bar select { font-size: 13px; padding: 8px 12px; border-radius: 8px; width: auto; }
+  .filter-bar input { min-width: 200px; }
+  .filter-chip { font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text3); cursor: pointer; transition: all 0.2s; }
+  .filter-chip.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: var(--surface2); border-bottom: 1px solid var(--border); }
+  th { font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text3); padding: 12px 16px; text-align: left; white-space: nowrap; }
+  td { padding: 13px 16px; border-bottom: 1px solid rgba(37,42,56,0.6); font-size: 14px; color: var(--text); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .cr-badge { font-family: var(--font-mono); font-size: 13px; padding: 3px 8px; border-radius: 5px; background: rgba(245,166,35,0.12); color: var(--accent); border: 1px solid rgba(245,166,35,0.2); }
+  .type-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; }
+  .type-badge.truckload { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .type-badge.parcel { background: rgba(168,85,247,0.15); color: #a855f7; }
+  .status-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .status-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .status-dot.flagged::before { background: var(--red); }
+  .action-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .action-btn:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  /* ── Detail slide panel ── */
+  .detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 150; display: none; align-items: flex-start; justify-content: flex-end; }
+  .detail-overlay.open { display: flex; }
+  .detail-panel { background: var(--surface); width: 480px; max-width: 100%; height: 100vh; border-left: 1px solid var(--border); overflow-y: auto; animation: slideIn 0.25s ease; }
+  @keyframes slideIn { from { transform: translateX(100%); } to { transform: none; } }
+  .detail-header { background: var(--surface2); border-bottom: 1px solid var(--border); padding: 20px 24px; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; }
+  .detail-cr { font-family: var(--font-display); font-size: 28px; font-weight: 800; color: var(--accent); }
+  .close-btn { background: var(--border); border: none; color: var(--text2); width: 32px; height: 32px; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .close-btn:hover { background: var(--red); color: #fff; }
+  .detail-body { padding: 24px; }
+  .detail-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); gap: 16px; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-key { font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text3); flex-shrink: 0; }
+  .detail-val { font-size: 14px; color: var(--text); text-align: right; font-weight: 500; }
+  .lines-detail-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  .lines-detail-table th { background: var(--bg); padding: 8px 12px; font-size: 10px; }
+  .lines-detail-table td { padding: 9px 12px; font-size: 13px; background: var(--bg); border-color: var(--border); }
+
+  /* ══════════════════════════════════════
+     CUSTOMER TRACKING VIEW
+  ══════════════════════════════════════ */
+  .track-wrap { max-width: 700px; margin: 0 auto; padding: 40px 20px 60px; }
+  .track-hero { text-align: center; margin-bottom: 40px; }
+  .track-hero-title { font-family: var(--font-display); font-size: 48px; font-weight: 800; letter-spacing: 1px; line-height: 1; margin-bottom: 10px; }
+  .track-hero-title span { color: var(--accent); }
+  .track-hero-sub { font-size: 15px; color: var(--text2); }
+  .track-search-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 32px; }
+  .track-input-row { display: flex; gap: 10px; }
+  .track-input-row input { font-size: 18px; font-family: var(--font-mono); letter-spacing: 1px; border-radius: 10px; padding: 12px 16px; }
+  .track-btn { background: var(--accent); color: #000; border: none; border-radius: 10px; font-family: var(--font-display); font-size: 16px; font-weight: 800; letter-spacing: 1px; padding: 12px 24px; cursor: pointer; white-space: nowrap; text-transform: uppercase; transition: all 0.2s; }
+  .track-btn:hover { background: #f0b84a; }
+  .track-result { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .track-result-header { background: var(--surface2); padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .track-cr-num { font-family: var(--font-display); font-size: 36px; font-weight: 800; color: var(--accent); }
+  .track-status-pill { font-family: var(--font-display); font-size: 14px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 6px 16px; border-radius: 20px; background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .track-result-body { padding: 24px; }
+  .track-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .track-info-key { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
+  .track-info-val { font-size: 15px; font-weight: 500; color: var(--text); }
+  .timeline { padding: 0; list-style: none; }
+  .tl-item { display: flex; gap: 16px; padding-bottom: 24px; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-dot-col { display: flex; flex-direction: column; align-items: center; width: 20px; flex-shrink: 0; }
+  .tl-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); flex-shrink: 0; margin-top: 3px; z-index: 1; }
+  .tl-dot.done { background: var(--green); }
+  .tl-dot.pending { background: var(--border); }
+  .tl-line { width: 2px; flex: 1; background: var(--border); margin-top: 4px; min-height: 20px; }
+  .tl-item:last-child .tl-line { display: none; }
+  .tl-event { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .tl-time { font-family: var(--font-mono); font-size: 11px; color: var(--text3); }
+  .track-empty { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .track-empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .track-empty-text { font-size: 15px; }
+
+  @media (max-width: 600px) {
+    .dash-wrap { padding: 16px; }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .nav-tabs .nav-tab { padding: 6px 10px; font-size: 11px; }
+    .detail-panel { width: 100%; }
+    .lines-header, .line-row { grid-template-columns: 24px 44px 70px 52px 44px 44px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════
+     CONFIG — EDIT THESE TWO LINES
+════════════════════════════ -->
+<script>
+  // ▼▼▼ PASTE YOUR SUPABASE VALUES HERE ▼▼▼
+  const SUPABASE_URL  = 'https://xxaispyhsahwsbvznglo.supabase.co';   // e.g. https://xyzabc.supabase.co
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4YWlzcHloc2Fod3NidnpuZ2xvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTgwOTEsImV4cCI6MjA4OTUzNDA5MX0.nPPgMyuVUfWkfZkGIvo1bxYMqLnVkmvbmw7XXf-EWr8';
+  // ▲▲▲ That's the only thing you need to change ▲▲▲
+
+  const CONFIG_READY = SUPABASE_URL !== 'YOUR_SUPABASE_URL';
+</script>
+
+<!-- ── NAV ── -->
+<nav class="nav">
+  <div class="nav-logo">BEST<span>WAY</span> <span style="color:var(--text3);font-weight:400;font-size:16px">FreightFlow</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchView('warehouse')">⬡ Intake</button>
+    <button class="nav-tab" onclick="switchView('office')">▦ Dashboard</button>
+    <button class="nav-tab" onclick="switchView('tracking')">◎ Track</button>
+  </div>
+  <div class="nav-right">
+    <span class="live-dot" id="conn-dot"></span>
+    <span id="clock">--:--</span>
+  </div>
+</nav>
+
+<!-- ══════════════════════
+     WAREHOUSE INTAKE
+══════════════════════ -->
+<div id="view-warehouse" class="view active">
+  <div class="wh-wrap">
+    <div class="wh-title">NEW <span>INTAKE</span></div>
+    <div class="wh-sub" id="wh-datetime">Loading...</div>
+
+    <div id="wh-config-warn" class="config-banner" style="display:none">
+      ⚠ Supabase not configured yet. Data will <strong>not</strong> be saved.
+      Open the HTML file and replace <code>YOUR_SUPABASE_URL</code> and <code>YOUR_SUPABASE_ANON_KEY</code> with your project values.
+    </div>
+
+    <div class="cr-type-row">
+      <button class="cr-type-btn selected" id="btn-type-truckload" onclick="selectType('truckload')">
+        <div class="cr-type-badge">CR 5XXXXX</div>
+        <span class="cr-type-label">Truckload</span>
+        <div class="cr-type-desc">Skids &amp; crates from carriers</div>
+      </button>
+      <button class="cr-type-btn" id="btn-type-parcel" onclick="selectType('parcel')">
+        <div class="cr-type-badge">CR 3XXXXX</div>
+        <span class="cr-type-label">Parcel</span>
+        <div class="cr-type-desc">FedEx, UPS, Bestway boxes</div>
+      </button>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Carrier Info</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Trucking Company</label>
+          <input type="text" id="f-carrier" placeholder="e.g. DAYTON FREIGHT">
+        </div>
+        <div class="form-group">
+          <label>Pro / Tracking #</label>
+          <input type="text" id="f-pro" placeholder="810747024">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Received By</label>
+          <input type="text" id="f-rcvby" placeholder="Your name">
+        </div>
+        <div class="form-group">
+          <label>Driver Name</label>
+          <input type="text" id="f-driver" placeholder="Optional">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Parties</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Shipper</label>
+          <input type="text" id="f-shipper" placeholder="Regal Beloit Power...">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Consignee</label>
+          <input type="text" id="f-consignee" placeholder="Altia Solutions">
+        </div>
+        <div class="form-group">
+          <label>Consignee Code</label>
+          <input type="text" id="f-conscode" placeholder="ALTI-TX" style="text-transform:uppercase">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Receipt Lines</div>
+      <div class="lines-header">
+        <span>#</span><span>PCS</span><span>Type</span><span>WT lbs</span><span>L"</span><span>W"</span><span></span>
+      </div>
+      <div id="lines-body"></div>
+      <button class="add-line-btn" onclick="addLine()">+ Add Line</button>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:24px;align-items:flex-end;">
+        <div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Total PCS</div>
+          <div style="font-family:var(--font-mono);font-size:20px;color:var(--accent)" id="total-pcs">0</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Total WT</div>
+          <div style="font-family:var(--font-mono);font-size:20px;color:var(--accent)" id="total-wt">0 lbs</div>
+        </div>
+        <div>
+          <label>Reweight</label>
+          <input type="number" id="f-reweight" placeholder="0" style="width:90px;font-size:16px;font-family:var(--font-mono);padding:6px 8px;">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">Freight Condition</div>
+      <div class="toggle-grid" style="margin-bottom:16px;">
+        <div class="toggle-item">
+          <span class="toggle-label">Banded Skid</span>
+          <label class="toggle"><input type="checkbox" id="t-banded" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-item">
+          <span class="toggle-label">Shrink Wrapped</span>
+          <label class="toggle"><input type="checkbox" id="t-shrink" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-item">
+          <span class="toggle-label">Heat Treated</span>
+          <label class="toggle"><input type="checkbox" id="t-heat" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-item">
+          <span class="toggle-label">Plastic Skid</span>
+          <label class="toggle"><input type="checkbox" id="t-plastic"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label>Condition of Freight</label>
+          <div class="condition-row">
+            <button class="condition-btn good selected" id="cond-good" onclick="selectCond('good')">Good</button>
+            <button class="condition-btn bad" id="cond-bad" onclick="selectCond('bad')">Bad</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Damage Description</label>
+        <textarea id="f-damage" rows="2" placeholder="Describe any visible damage..."></textarea>
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label>Memo / Notes</label>
+        <textarea id="f-memo" rows="2" placeholder="Internal notes..."></textarea>
+      </div>
+    </div>
+    <div style="height:80px"></div>
+  </div>
+
+  <div class="submit-bar">
+    <button class="btn-secondary" onclick="clearForm()">Clear</button>
+    <button class="btn-primary" id="submit-btn" onclick="submitIntake()">Submit CR</button>
+  </div>
+</div>
+
+<!-- ══════════════════════
+     OFFICE DASHBOARD
+══════════════════════ -->
+<div id="view-office" class="view">
+  <div class="dash-wrap">
+    <div class="dash-top">
+      <div>
+        <div class="dash-title">TODAY'S <span>RECEIPTS</span></div>
+        <div class="dash-date" id="dash-date">—</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn-secondary" style="padding:8px 16px;font-size:13px;" onclick="loadDashboard()">↻ Refresh</button>
+        <button class="btn-secondary" style="padding:8px 16px;font-size:13px;" onclick="switchView('warehouse')">+ New Intake</button>
+      </div>
+    </div>
+    <div id="dash-config-warn" class="config-banner" style="display:none">
+      ⚠ Supabase not configured. Open the HTML file and set your project URL and anon key.
+    </div>
+    <div class="kpi-row">
+      <div class="kpi-card"><div class="kpi-icon">📦</div><div class="kpi-label">Total CRs Today</div><div class="kpi-val" id="kpi-total">—</div><div class="kpi-sub">cargo receipts</div></div>
+      <div class="kpi-card blue"><div class="kpi-icon">🏗️</div><div class="kpi-label">Truckload</div><div class="kpi-val" id="kpi-truckload">—</div><div class="kpi-sub">skids / crates</div></div>
+      <div class="kpi-card"><div class="kpi-icon">📬</div><div class="kpi-label">Parcel</div><div class="kpi-val" id="kpi-parcel">—</div><div class="kpi-sub">boxes</div></div>
+      <div class="kpi-card green"><div class="kpi-icon">⚖️</div><div class="kpi-label">Total Weight</div><div class="kpi-val" id="kpi-weight">—</div><div class="kpi-sub">lbs received</div></div>
+    </div>
+    <div class="filter-bar">
+      <input type="text" id="search-input" placeholder="🔍  Search CR#, shipper, consignee..." oninput="renderTable()">
+      <select id="filter-type" onchange="renderTable()">
+        <option value="">All Types</option>
+        <option value="truckload">Truckload</option>
+        <option value="parcel">Parcel</option>
+      </select>
+      <button class="filter-chip active" onclick="filterChip(this,'all')">All</button>
+      <button class="filter-chip" onclick="filterChip(this,'good')">Good</button>
+      <button class="filter-chip" onclick="filterChip(this,'flagged')">Flagged</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>CR #</th><th>Type</th><th>Time</th><th>Shipper</th><th>Consignee</th>
+            <th>Carrier / Pro#</th><th>PCS</th><th>WT (lbs)</th><th>Condition</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="cr-table-body">
+          <tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">
+            <span class="spinner"></span>
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════
+     CUSTOMER TRACKING
+══════════════════════ -->
+<div id="view-tracking" class="view">
+  <div class="track-wrap">
+    <div class="track-hero">
+      <div class="track-hero-title">TRACK <span>YOUR</span> FREIGHT</div>
+      <div class="track-hero-sub">Enter your Cargo Receipt number for a real-time status update.</div>
+    </div>
+    <div class="track-search-box">
+      <div class="track-input-row">
+        <input type="text" id="track-input" placeholder="Enter CR # (e.g. 531124)" maxlength="10" oninput="this.value=this.value.replace(/\D/g,'')">
+        <button class="track-btn" onclick="doTrack()">Track</button>
+      </div>
+    </div>
+    <div id="track-result-area">
+      <div class="track-empty">
+        <div class="track-empty-icon">◎</div>
+        <div class="track-empty-text">Enter a CR number above to check your freight status.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Panel -->
+<div class="detail-overlay" id="detail-overlay" onclick="closeDetail(event)">
+  <div class="detail-panel" id="detail-panel">
+    <div class="detail-header">
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">Cargo Receipt</div>
+        <div class="detail-cr" id="dp-cr">—</div>
+      </div>
+      <button class="close-btn" onclick="closeDetailBtn()">✕</button>
+    </div>
+    <div class="detail-body" id="dp-body"><div style="text-align:center;padding:40px"><span class="spinner"></span></div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════
+//  SUPABASE INIT
+// ══════════════════════════════════════════
+let sb = null;
+let isConnected = false;
+let allRecords = [];   // cache for filter/search
+let condFilter = 'all';
+
+function initSupabase() {
+  if (!CONFIG_READY) {
+    document.getElementById('wh-config-warn').style.display = 'block';
+    document.getElementById('dash-config-warn').style.display = 'block';
+    setConnDot(false);
+    return;
+  }
+  try {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    setConnDot(true);
+    isConnected = true;
+
+    // Real-time subscription: refresh dashboard when new CR arrives
+    sb.channel('cr-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cargo_receipts' }, () => {
+        if (document.getElementById('view-office').classList.contains('active')) {
+          loadDashboard();
+        }
+      })
+      .subscribe();
+  } catch(e) {
+    console.error('Supabase init failed:', e);
+    setConnDot(false);
+  }
+}
+
+function setConnDot(online) {
+  const dot = document.getElementById('conn-dot');
+  dot.classList.toggle('offline', !online);
+}
+
+// ══════════════════════════════════════════
+//  CLOCK
+// ══════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+  const dateStr = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const timeStr = now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const wh = document.getElementById('wh-datetime');
+  if(wh) wh.textContent = `${dateStr} · ${timeStr}`;
+  const dd = document.getElementById('dash-date');
+  if(dd) dd.textContent = dateStr;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ══════════════════════════════════════════
+//  VIEWS
+// ══════════════════════════════════════════
+function switchView(v) {
+  document.querySelectorAll('.view').forEach(x => x.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach((t,i) => {
+    t.classList.remove('active');
+    if(['warehouse','office','tracking'][i]===v) t.classList.add('active');
+  });
+  if(v==='office') loadDashboard();
+}
+
+// ══════════════════════════════════════════
+//  CR TYPE & CONDITION
+// ══════════════════════════════════════════
+let selectedType = 'truckload';
+let selectedCond = 'good';
+
+function selectType(t) {
+  selectedType = t;
+  document.getElementById('btn-type-truckload').classList.toggle('selected', t==='truckload');
+  document.getElementById('btn-type-parcel').classList.toggle('selected', t==='parcel');
+}
+function selectCond(c) {
+  selectedCond = c;
+  document.getElementById('cond-good').classList.toggle('selected', c==='good');
+  document.getElementById('cond-good').classList.toggle('good', true);
+  document.getElementById('cond-bad').classList.toggle('selected', c==='bad');
+  document.getElementById('cond-bad').classList.toggle('bad', true);
+}
+
+// ══════════════════════════════════════════
+//  RECEIPT LINES
+// ══════════════════════════════════════════
+let lineCount = 0;
+
+function addLine() {
+  lineCount++;
+  const n = lineCount;
+  const types = ['SKID','BOX','CRATE','PALLET','DRUM'];
+  const div = document.createElement('div');
+  div.id = `line-${n}`;
+  div.innerHTML = `
+    <div class="line-row">
+      <div class="line-num">${n}</div>
+      <input type="number" min="1" placeholder="1" class="l-pcs" oninput="recalc()">
+      <select class="l-type">${types.map(t=>`<option${t==='SKID'?' selected':''}>${t}</option>`).join('')}</select>
+      <input type="number" placeholder="0" class="l-wt" oninput="recalc()">
+      <input type="number" placeholder="0" class="l-l">
+      <input type="number" placeholder="0" class="l-w">
+      <button class="del-line-btn" onclick="deleteLine(${n})">✕</button>
+    </div>
+    <div class="line-h-row">
+      <div></div>
+      <input type="number" placeholder='H"' class="l-h">
+      <input type="text" placeholder="Cargo description" class="desc-input l-desc">
+      <div></div>
+    </div>`;
+  document.getElementById('lines-body').appendChild(div);
+  div.querySelector('.l-pcs').focus();
+  recalc();
+}
+
+function deleteLine(n) {
+  document.getElementById(`line-${n}`)?.remove();
+  recalc();
+}
+
+function recalc() {
+  let pcs=0, wt=0;
+  document.querySelectorAll('.l-pcs').forEach(i => pcs += parseInt(i.value||0));
+  document.querySelectorAll('.l-wt').forEach(i => wt += parseFloat(i.value||0));
+  document.getElementById('total-pcs').textContent = pcs;
+  document.getElementById('total-wt').textContent = wt.toFixed(0)+' lbs';
+}
+
+// ══════════════════════════════════════════
+//  SUBMIT INTAKE → SUPABASE
+// ══════════════════════════════════════════
+async function submitIntake() {
+  const carrier = document.getElementById('f-carrier').value.trim();
+  const consignee = document.getElementById('f-consignee').value.trim();
+  if(!carrier || !consignee) { showToast('Trucking Company and Consignee are required.', 'error'); return; }
+
+  // Gather lines
+  const lines = [];
+  document.querySelectorAll('#lines-body > div').forEach((block, idx) => {
+    lines.push({
+      line_number: idx+1,
+      pcs: parseInt(block.querySelector('.l-pcs')?.value||1),
+      pkg_type: block.querySelector('.l-type')?.value||'SKID',
+      weight_lbs: parseFloat(block.querySelector('.l-wt')?.value||0),
+      length_in: parseFloat(block.querySelector('.l-l')?.value||0)||null,
+      width_in: parseFloat(block.querySelector('.l-w')?.value||0)||null,
+      height_in: parseFloat(block.querySelector('.l-h')?.value||0)||null,
+      cargo_desc: block.querySelector('.l-desc')?.value.trim()||null,
+    });
+  });
+
+  const totalWt  = lines.reduce((s,l)=>s+l.weight_lbs,0);
+  const totalPcs = lines.reduce((s,l)=>s+l.pcs,0);
+  const crNum = selectedType==='truckload'
+    ? (500000+Math.floor(Math.random()*49999))
+    : (300000+Math.floor(Math.random()*49999));
+
+  const crRecord = {
+    cr_number: crNum,
+    cr_type: selectedType,
+    carrier,
+    pro_number: document.getElementById('f-pro').value.trim()||null,
+    received_by: document.getElementById('f-rcvby').value.trim()||null,
+    driver: document.getElementById('f-driver').value.trim()||null,
+    shipper: document.getElementById('f-shipper').value.trim()||null,
+    consignee,
+    cons_code: document.getElementById('f-conscode').value.trim()||null,
+    total_pcs: totalPcs,
+    total_wt: totalWt,
+    reweight: parseFloat(document.getElementById('f-reweight').value)||totalWt,
+    condition: selectedCond,
+    banded: document.getElementById('t-banded').checked,
+    shrink_wrap: document.getElementById('t-shrink').checked,
+    heat_treated: document.getElementById('t-heat').checked,
+    plastic_skid: document.getElementById('t-plastic').checked,
+    damage_desc: document.getElementById('f-damage').value.trim()||null,
+    memo: document.getElementById('f-memo').value.trim()||null,
+  };
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+  if (!isConnected || !sb) {
+    // Offline fallback — save to localStorage for retry
+    const pending = JSON.parse(localStorage.getItem('bf_pending')||'[]');
+    pending.push({crRecord, lines});
+    localStorage.setItem('bf_pending', JSON.stringify(pending));
+    showToast(`CR #${crNum} saved locally (offline)`, 'success');
+    clearForm();
+    btn.disabled = false;
+    btn.innerHTML = 'Submit CR';
+    return;
+  }
+
+  try {
+    // Insert CR header
+    const { data: crData, error: crErr } = await sb
+      .from('cargo_receipts')
+      .insert([crRecord])
+      .select()
+      .single();
+    if(crErr) throw crErr;
+
+    // Insert receipt lines
+    if(lines.length) {
+      const lineRows = lines.map(l => ({ ...l, cr_id: crData.id }));
+      const { error: lErr } = await sb.from('receipt_lines').insert(lineRows);
+      if(lErr) throw lErr;
+    }
+
+    showToast(`✓ CR #${crNum} saved`, 'success');
+    clearForm();
+  } catch(err) {
+    console.error(err);
+    showToast('Save failed: ' + (err.message||'unknown error'), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Submit CR';
+  }
+}
+
+function clearForm() {
+  ['f-carrier','f-pro','f-rcvby','f-driver','f-shipper','f-consignee','f-conscode','f-reweight','f-damage','f-memo']
+    .forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('lines-body').innerHTML='';
+  lineCount=0; recalc();
+  selectedCond='good'; selectCond('good');
+  document.getElementById('t-banded').checked=true;
+  document.getElementById('t-shrink').checked=true;
+  document.getElementById('t-heat').checked=true;
+  document.getElementById('t-plastic').checked=false;
+  addLine();
+}
+
+// ══════════════════════════════════════════
+//  DASHBOARD — LOAD FROM SUPABASE
+// ══════════════════════════════════════════
+async function loadDashboard() {
+  if(!sb) {
+    renderTable(); return;
+  }
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+
+  const { data, error } = await sb
+    .from('cargo_receipts')
+    .select('*')
+    .gte('received_at', todayStart.toISOString())
+    .order('received_at', { ascending: false });
+
+  if(error) { console.error(error); return; }
+  allRecords = data || [];
+  renderTable();
+  refreshKPIs();
+}
+
+function refreshKPIs() {
+  const d = allRecords;
+  document.getElementById('kpi-total').textContent = d.length;
+  document.getElementById('kpi-truckload').textContent = d.filter(r=>r.cr_type==='truckload').length;
+  document.getElementById('kpi-parcel').textContent = d.filter(r=>r.cr_type==='parcel').length;
+  const wt = d.reduce((s,r)=>s+parseFloat(r.total_wt||0),0);
+  document.getElementById('kpi-weight').textContent = wt.toLocaleString();
+}
+
+let filteredCondition = 'all';
+function filterChip(btn, val) {
+  filteredCondition = val;
+  document.querySelectorAll('.filter-chip').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable();
+}
+
+function renderTable() {
+  const search = document.getElementById('search-input')?.value.toLowerCase()||'';
+  const typeFilter = document.getElementById('filter-type')?.value||'';
+  let data = [...allRecords];
+
+  if(search) data = data.filter(r =>
+    String(r.cr_number).includes(search)||
+    (r.shipper||'').toLowerCase().includes(search)||
+    (r.consignee||'').toLowerCase().includes(search)||
+    (r.carrier||'').toLowerCase().includes(search)||
+    (r.pro_number||'').toLowerCase().includes(search)
+  );
+  if(typeFilter) data = data.filter(r=>r.cr_type===typeFilter);
+  if(filteredCondition==='good') data = data.filter(r=>r.condition==='good'&&!r.damage_desc);
+  if(filteredCondition==='flagged') data = data.filter(r=>r.condition==='bad'||r.damage_desc);
+
+  const tbody = document.getElementById('cr-table-body');
+  if(!data.length) {
+    tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3)">${allRecords.length?'No matching receipts.':'No receipts today yet.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(r => {
+    const t = new Date(r.received_at).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    const flagged = r.condition==='bad'||r.damage_desc;
+    return `<tr>
+      <td><span class="cr-badge">${r.cr_number}</span></td>
+      <td><span class="type-badge ${r.cr_type}">${r.cr_type==='truckload'?'Truckload':'Parcel'}</span></td>
+      <td style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">${t}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.shipper||'—'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.consignee}</td>
+      <td style="font-size:12px;color:var(--text2)">${r.carrier}<br><span style="font-family:var(--font-mono);font-size:11px;color:var(--text3)">${r.pro_number||'—'}</span></td>
+      <td style="font-family:var(--font-mono)">${r.total_pcs}</td>
+      <td style="font-family:var(--font-mono)">${parseFloat(r.total_wt).toLocaleString()}</td>
+      <td><span class="status-dot ${flagged?'flagged':''}">${flagged?'Flagged':'Good'}</span></td>
+      <td><button class="action-btn" onclick="openDetail(${r.id})">View</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  DETAIL PANEL
+// ══════════════════════════════════════════
+async function openDetail(id) {
+  document.getElementById('detail-overlay').classList.add('open');
+  document.getElementById('dp-cr').textContent = '...';
+  document.getElementById('dp-body').innerHTML = '<div style="text-align:center;padding:40px"><span class="spinner"></span></div>';
+
+  const r = allRecords.find(x=>x.id===id);
+  if(!r) return;
+  document.getElementById('dp-cr').textContent = '#'+r.cr_number;
+
+  // Load lines
+  let lines = [];
+  if(sb) {
+    const { data } = await sb.from('receipt_lines').select('*').eq('cr_id', id).order('line_number');
+    lines = data||[];
+  }
+
+  const t = new Date(r.received_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  const flags = [r.banded&&'Banded',r.shrink_wrap&&'Shrink Wrap',r.heat_treated&&'Heat Treated',r.plastic_skid&&'Plastic Skid'].filter(Boolean);
+
+  document.getElementById('dp-body').innerHTML = `
+    <div class="detail-row"><span class="detail-key">Type</span><span class="detail-val"><span class="type-badge ${r.cr_type}">${r.cr_type==='truckload'?'Truckload':'Parcel'}</span></span></div>
+    <div class="detail-row"><span class="detail-key">Received</span><span class="detail-val">${t}</span></div>
+    <div class="detail-row"><span class="detail-key">Received By</span><span class="detail-val">${r.received_by||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Carrier</span><span class="detail-val">${r.carrier}</span></div>
+    <div class="detail-row"><span class="detail-key">Pro #</span><span class="detail-val" style="font-family:var(--font-mono)">${r.pro_number||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Driver</span><span class="detail-val">${r.driver||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Shipper</span><span class="detail-val">${r.shipper||'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Consignee</span><span class="detail-val">${r.consignee}${r.cons_code?' ('+r.cons_code+')':''}</span></div>
+    <div class="detail-row"><span class="detail-key">Pieces</span><span class="detail-val" style="font-family:var(--font-mono);font-size:22px;color:var(--accent)">${r.total_pcs}</span></div>
+    <div class="detail-row"><span class="detail-key">Weight</span><span class="detail-val" style="font-family:var(--font-mono);font-size:22px;color:var(--accent)">${parseFloat(r.total_wt).toLocaleString()} lbs</span></div>
+    <div class="detail-row"><span class="detail-key">Reweight</span><span class="detail-val" style="font-family:var(--font-mono)">${r.reweight||'—'} lbs</span></div>
+    <div class="detail-row"><span class="detail-key">Freight Flags</span><span class="detail-val" style="font-size:12px">${flags.length?flags.map(f=>'✓ '+f).join('  '):'—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Condition</span><span class="detail-val" style="color:${r.condition==='good'?'var(--green)':'var(--red)'};font-weight:700;font-size:16px;">${r.condition.toUpperCase()}</span></div>
+    ${r.damage_desc?`<div class="detail-row"><span class="detail-key">Damage</span><span class="detail-val" style="color:var(--red)">${r.damage_desc}</span></div>`:''}
+    ${r.memo?`<div class="detail-row"><span class="detail-key">Memo</span><span class="detail-val">${r.memo}</span></div>`:''}
+    ${lines.length?`
+    <div style="margin-top:20px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;">Receipt Lines</div>
+      <table class="lines-detail-table">
+        <thead><tr><th>#</th><th>PCS</th><th>Type</th><th>WT</th><th>L×W×H</th><th>Desc</th></tr></thead>
+        <tbody>${lines.map(l=>`
+          <tr>
+            <td>${l.line_number}</td>
+            <td>${l.pcs}</td>
+            <td>${l.pkg_type}</td>
+            <td style="font-family:var(--font-mono)">${l.weight_lbs} lbs</td>
+            <td style="font-family:var(--font-mono);font-size:11px">${[l.length_in,l.width_in,l.height_in].map(v=>v||0).join('×')}</td>
+            <td style="color:var(--text2)">${l.cargo_desc||'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`:''}
+  `;
+}
+
+function closeDetail(e) { if(e.target===document.getElementById('detail-overlay')) closeDetailBtn(); }
+function closeDetailBtn() { document.getElementById('detail-overlay').classList.remove('open'); }
+
+// ══════════════════════════════════════════
+//  CUSTOMER TRACKING
+// ══════════════════════════════════════════
+async function doTrack() {
+  const q = document.getElementById('track-input').value.trim();
+  const area = document.getElementById('track-result-area');
+  if(!q) { area.innerHTML=`<div class="track-empty"><div class="track-empty-icon">◎</div><div class="track-empty-text">Please enter a CR number.</div></div>`; return; }
+
+  area.innerHTML=`<div class="track-empty"><span class="spinner"></span></div>`;
+
+  let r = null;
+  if(sb) {
+    const { data } = await sb
+      .from('cargo_receipts')
+      .select('*')
+      .eq('cr_number', parseInt(q))
+      .maybeSingle();
+    r = data;
+  } else {
+    r = allRecords.find(x=>String(x.cr_number)===q);
+  }
+
+  if(!r) {
+    area.innerHTML=`<div class="track-empty"><div class="track-empty-icon">✕</div><div class="track-empty-text">CR #${q} not found. Please check the number and try again.</div></div>`;
+    return;
+  }
+
+  const rcvTime = new Date(r.received_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  const timeline = [
+    { event: 'Freight arrived at Bestway facility', time: rcvTime, done: true },
+    { event: `Cargo Receipt logged${r.received_by?' by '+r.received_by:''}`, time: rcvTime, done: true },
+    { event: 'Awaiting office processing', time: '—', done: false },
+    { event: 'Ready for pickup / delivery', time: '—', done: false },
+  ];
+
+  area.innerHTML = `
+    <div class="track-result">
+      <div class="track-result-header">
+        <div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:4px;">Cargo Receipt</div>
+          <div class="track-cr-num">#${r.cr_number}</div>
+        </div>
+        <div class="track-status-pill">Received</div>
+      </div>
+      <div class="track-result-body">
+        <div class="track-info-grid">
+          <div class="track-info-item"><div class="track-info-key">Consignee</div><div class="track-info-val">${r.consignee}</div></div>
+          <div class="track-info-item"><div class="track-info-key">Shipper</div><div class="track-info-val">${r.shipper||'—'}</div></div>
+          <div class="track-info-item"><div class="track-info-key">Pieces</div><div class="track-info-val" style="font-family:var(--font-mono);font-size:20px;color:var(--accent)">${r.total_pcs}</div></div>
+          <div class="track-info-item"><div class="track-info-key">Weight</div><div class="track-info-val" style="font-family:var(--font-mono);font-size:20px;color:var(--accent)">${parseFloat(r.total_wt).toLocaleString()} lbs</div></div>
+          <div class="track-info-item"><div class="track-info-key">Carrier</div><div class="track-info-val">${r.carrier}</div></div>
+          <div class="track-info-item"><div class="track-info-key">Condition</div><div class="track-info-val" style="color:${r.condition==='good'?'var(--green)':'var(--red)'};font-weight:700">${r.condition.toUpperCase()}</div></div>
+        </div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:16px;">Status Timeline</div>
+        <ul class="timeline">
+          ${timeline.map(t=>`
+            <li class="tl-item">
+              <div class="tl-dot-col"><div class="tl-dot ${t.done?'done':'pending'}"></div><div class="tl-line"></div></div>
+              <div class="tl-content">
+                <div class="tl-event" style="color:${t.done?'var(--text)':'var(--text3)'}">${t.event}</div>
+                <div class="tl-time">${t.done?t.time:'Pending'}</div>
+              </div>
+            </li>`).join('')}
+        </ul>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show ${type}`;
+  setTimeout(() => t.className = 'toast', 3500);
+}
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+initSupabase();
+addLine();
+</script>
+</body>
+</html>
